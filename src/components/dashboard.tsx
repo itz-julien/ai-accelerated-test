@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AuthForm } from "./auth-form";
 import { Sidebar } from "./sidebar";
 import { ChatPanel } from "./chat-panel";
@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 
 export function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const supabase = createClient();
 
   useEffect(() => {
@@ -35,7 +37,11 @@ export function Dashboard() {
     setIsAuthenticated(false);
   };
 
-  // Loading state
+  const handleChatCreated = useCallback((chatId: string) => {
+    setActiveChatId(chatId);
+    setSidebarRefreshKey((k) => k + 1);
+  }, []);
+
   if (isAuthenticated === null) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
@@ -52,9 +58,13 @@ export function Dashboard() {
 
   return (
     <div className="flex h-screen bg-zinc-950 text-zinc-100">
-      <Sidebar onLogout={handleLogout} />
+      <Sidebar
+        onLogout={handleLogout}
+        activeChatId={activeChatId}
+        onSelectChat={setActiveChatId}
+        refreshKey={sidebarRefreshKey}
+      />
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
         <div className="h-8 bg-zinc-950 border-b border-zinc-800 flex items-center px-4 text-[10px] font-mono text-zinc-600">
           <span className="text-emerald-400 mr-2">●</span>
           SYSTEM ONLINE
@@ -62,10 +72,15 @@ export function Dashboard() {
           LATENCY: &lt;100ms
           <span className="mx-3">|</span>
           MODELS: 3/3 CONNECTED
+          <span className="mx-3">|</span>
+          MSG LIMIT: 10
           <span className="ml-auto">AI COMMAND CENTER v1.0</span>
         </div>
         <div className="flex-1 overflow-hidden">
-          <ChatPanel />
+          <ChatPanel
+            activeChatId={activeChatId}
+            onChatCreated={handleChatCreated}
+          />
         </div>
       </div>
     </div>

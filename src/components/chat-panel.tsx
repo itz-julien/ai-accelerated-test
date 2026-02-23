@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { ModelSelector } from "./model-selector";
 import { ChatMessage } from "./chat-message";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -10,10 +10,18 @@ import { Button } from "@/components/ui/button";
 import { MODELS, type ModelId } from "@/lib/models";
 import { Send, Square, Trash2 } from "lucide-react";
 
-export function ChatPanel() {
+const MAX_MESSAGES = 10;
+
+interface ChatPanelProps {
+  activeChatId: string | null;
+  onChatCreated: (chatId: string) => void;
+}
+
+export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
   const [selectedModel, setSelectedModel] = useState<ModelId>("gpt-4o");
   const [supervisorMode, setSupervisorMode] = useState(false);
   const [inputValue, setInputValue] = useState("");
+  const [atLimit, setAtLimit] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const transport = useMemo(
@@ -31,20 +39,121 @@ export function ChatPanel() {
 
   const isLoading = status === "submitted" || status === "streaming";
 
+  // Load messages when activeChatId changes
+  useEffect(() => {
+    if (!activeChatId) {
+      setMessages([]);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await fetch(`/api/history/${activeChatId}`);
+        const data = await res.json();
+        if (data.messages) {
+          const uiMessages = data.messages.map((m: { id: string; role: string; content: string }) => ({
+            id: m.id,
+            role: m.role,
+            parts: [{ type: "text" as const, text: m.content }],
+          }));
+          setMessages(uiMessages);
+        }
+      } catch {
+        // Silently fail — tables might not exist yet
+      }
+    })();
+  }, [activeChatId, setMessages]);
+
+  // Check message limit
+  useEffect(() => {
+    setAtLimit(messages.length >= MAX_MESSAGES);
+  }, [messages]);
+
+  // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  const currentModel = MODELS[selectedModel];
+  // Save message to Supabase
+  const saveMessage = useCallback(
+    async (chatId: string, role: string, content: string, model?: string) => {
+      try {
+        await fetch(`/api/history/${chatId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role, content, model }),
+        });
+      } catch {
+        // Silent fail
+      }
+    },
+    []
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Create chat if needed, then send message
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || isLoading) return;
-    sendMessage({ text: inputValue });
+    if (!inputValue.trim() || isLoading || atLimit) return;
+
+    let chatId = activeChatId;
+
+    // Create a new chat if none active
+    if (!chatId) {
+      try {
+        const res = await fetch("/api/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: selectedModel,
+            is_supervisor: supervisorMode,
+          }),
+        });
+        const data = await res.json();
+        if (data.chat) {
+          chatId = data.chat.id;
+          onChatCreated(chatId!);
+        }
+      } catch {
+        // If history tables don't exist, still allow chatting
+      }
+    }
+
+    const userText = inputValue;
     setInputValue("");
+    sendMessage({ text: userText });
+
+    // Save user message
+    if (chatId) {
+      await saveMessage(chatId, "user", userText);
+    }
   };
+
+  // Save assistant response when streaming finishes
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    if (prevStatusRef.current === "streaming" && status === "ready") {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg?.role === "assistant" && activeChatId) {
+        const content =
+          lastMsg.parts
+            ?.filter((p) => p.type === "text")
+            .map((p) => (p as { type: "text"; text: string }).text)
+            .join("") || "";
+        if (content) {
+          saveMessage(
+            activeChatId,
+            "assistant",
+            content,
+            supervisorMode ? "supervisor" : selectedModel
+          );
+        }
+      }
+    }
+    prevStatusRef.current = status;
+  }, [status, messages, activeChatId, supervisorMode, selectedModel, saveMessage]);
+
+  const currentModel = MODELS[selectedModel];
 
   return (
     <div className="flex flex-col h-full">
@@ -123,6 +232,11 @@ export function ChatPanel() {
 
       {/* Input */}
       <div className="border-t border-zinc-800 p-3 bg-zinc-950/80">
+        {atLimit && (
+          <div className="mb-2 px-3 py-1.5 bg-amber-950/50 border border-amber-800/50 rounded text-amber-400 text-xs font-mono">
+            Message limit reached ({MAX_MESSAGES}). Start a new chat to continue.
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="flex gap-2">
           <div className="flex-1 relative">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600 font-mono text-sm">
@@ -132,26 +246,28 @@ export function ChatPanel() {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder={
-                supervisorMode
-                  ? "Ask all models at once..."
-                  : `Ask ${currentModel.name}...`
+                atLimit
+                  ? "Message limit reached..."
+                  : supervisorMode
+                    ? "Ask all models at once..."
+                    : `Ask ${currentModel.name}...`
               }
               className="w-full bg-zinc-900 border border-zinc-800 rounded-md pl-7 pr-4 py-2.5 text-sm text-zinc-100 font-mono placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600"
-              disabled={isLoading}
+              disabled={isLoading || atLimit}
             />
           </div>
 
           {isLoading ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={stop}
-            >
+            <Button type="button" variant="outline" size="icon" onClick={stop}>
               <Square className="h-4 w-4" />
             </Button>
           ) : (
-            <Button type="submit" variant="outline" size="icon">
+            <Button
+              type="submit"
+              variant="outline"
+              size="icon"
+              disabled={atLimit}
+            >
               <Send className="h-4 w-4" />
             </Button>
           )}
@@ -191,7 +307,9 @@ export function ChatPanel() {
             MODEL: {supervisorMode ? "ALL" : currentModel.id.toUpperCase()}
           </span>
           <span>|</span>
-          <span>STREAM: ACTIVE</span>
+          <span>
+            MSGS: {messages.length}/{MAX_MESSAGES}
+          </span>
         </div>
       </div>
     </div>

@@ -1,20 +1,25 @@
-import { streamText } from "ai";
-import { getModel, MODEL_LIST, type ModelId } from "@/lib/models";
-import { generateText } from "ai";
+import { streamText, generateText } from "ai";
+import { getModel, MODEL_LIST } from "@/lib/models";
+
+const MAX_MESSAGES = 10;
 
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
   const { messages } = await req.json();
-  const userMessage = messages[messages.length - 1]?.content || "";
+
+  // Limit context to last MAX_MESSAGES
+  const trimmedMessages = messages.slice(-MAX_MESSAGES);
+  const userMessage = trimmedMessages[trimmedMessages.length - 1]?.content || "";
 
   // Fan out to all models in parallel
   const results = await Promise.allSettled(
     MODEL_LIST.map(async (model) => {
       const result = await generateText({
         model: getModel(model.id),
-        system: "You are a helpful AI assistant. Be concise and accurate. Respond in 2-3 paragraphs max.",
-        messages,
+        system:
+          "You are a helpful AI assistant. Be concise and accurate. Respond in 2-3 paragraphs max.",
+        messages: trimmedMessages,
       });
       return { model: model.id, name: model.name, text: result.text };
     })
@@ -22,13 +27,15 @@ export async function POST(req: Request) {
 
   const responses = results
     .filter((r) => r.status === "fulfilled")
-    .map((r) => (r as PromiseFulfilledResult<{ model: string; name: string; text: string }>).value);
+    .map(
+      (r) =>
+        (r as PromiseFulfilledResult<{ model: string; name: string; text: string }>).value
+    );
 
   const failedModels = results
     .map((r, i) => (r.status === "rejected" ? MODEL_LIST[i].name : null))
     .filter(Boolean);
 
-  // Now use a supervisor model to synthesize
   const synthesisPrompt = `You are the Supervisor AI — the master orchestrator in an AI Command Center.
 
 You received the following responses from different AI models to this user query: "${userMessage}"
