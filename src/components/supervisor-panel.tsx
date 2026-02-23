@@ -2,8 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { ChatSkeleton } from "./chat-skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Square, Trash2, Crown } from "lucide-react";
+import {
+  createChat,
+  getChatMessages,
+  saveMessage,
+} from "@/lib/chat-history";
 
 interface ModelResponse {
   modelId: string;
@@ -20,9 +26,26 @@ interface ConversationEntry {
   responses: ModelResponse[];
 }
 
-export function SupervisorPanel() {
+interface SupervisorPanelProps {
+  activeChatId: string | null;
+  onChatCreated: (chatId: string) => void;
+  atLimit: boolean;
+  globalMsgCount: number;
+  maxMessages: number;
+  onMessageSent: (count: number) => void;
+}
+
+export function SupervisorPanel({
+  activeChatId,
+  onChatCreated,
+  atLimit,
+  globalMsgCount,
+  maxMessages,
+  onMessageSent,
+}: SupervisorPanelProps) {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [conversation, setConversation] = useState<ConversationEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -32,25 +55,84 @@ export function SupervisorPanel() {
     }
   }, [conversation, isLoading]);
 
+  // Load history when activeChatId changes
+  useEffect(() => {
+    if (!activeChatId) {
+      setConversation([]);
+      setIsLoadingHistory(false);
+      return;
+    }
+    setIsLoadingHistory(true);
+    getChatMessages(activeChatId).then((msgs) => {
+      const entries: ConversationEntry[] = [];
+      for (let i = 0; i < msgs.length; i += 2) {
+        const userMsg = msgs[i];
+        const assistantMsg = msgs[i + 1];
+        if (userMsg?.role === "user") {
+          let responses: ModelResponse[] = [];
+          if (assistantMsg?.role === "assistant") {
+            try {
+              responses = JSON.parse(assistantMsg.content);
+            } catch {
+              responses = [
+                {
+                  modelId: "saved",
+                  name: "Supervisor",
+                  color: "#a855f7",
+                  icon: "👑",
+                  text: assistantMsg.content,
+                  error: null,
+                },
+              ];
+            }
+          }
+          entries.push({
+            id: userMsg.id,
+            userMessage: userMsg.content,
+            responses,
+          });
+        }
+      }
+      setConversation(entries);
+      setIsLoadingHistory(false);
+    });
+  }, [activeChatId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading || atLimit) return;
 
     const userMessage = inputValue;
     setInputValue("");
     setIsLoading(true);
 
+    // Ensure we have a chat
+    let chatId = activeChatId;
+    if (!chatId) {
+      const chat = await createChat("supervisor", true);
+      if (chat) {
+        chatId = chat.id;
+        onChatCreated(chatId);
+      }
+    }
+
     // Build message history for context
     const messages = conversation.flatMap((entry) => [
       { role: "user" as const, content: entry.userMessage },
-      // Use first successful response as assistant context
       {
         role: "assistant" as const,
         content:
-          entry.responses.find((r) => r.text)?.text || "No response available.",
+          entry.responses.find((r) => r.text)?.text ||
+          "No response available.",
       },
     ]);
     messages.push({ role: "user" as const, content: userMessage });
+
+    // Save user message
+    if (chatId) {
+      await saveMessage(chatId, "user", userMessage, "supervisor");
+      onMessageSent(1);
+    }
 
     try {
       const res = await fetch("/api/supervisor", {
@@ -60,31 +142,40 @@ export function SupervisorPanel() {
       });
 
       const data = await res.json();
+      const responses: ModelResponse[] = data.responses || [];
 
       setConversation((prev) => [
         ...prev,
-        {
-          id: crypto.randomUUID(),
-          userMessage,
-          responses: data.responses || [],
-        },
+        { id: crypto.randomUUID(), userMessage, responses },
       ]);
+
+      // Save all model responses as a single JSON assistant message
+      if (chatId) {
+        await saveMessage(
+          chatId,
+          "assistant",
+          JSON.stringify(responses),
+          "supervisor"
+        );
+        onMessageSent(1);
+      }
     } catch {
+      const errorResponses: ModelResponse[] = [
+        {
+          modelId: "error",
+          name: "System",
+          color: "#ef4444",
+          icon: "X",
+          text: null,
+          error: "Failed to reach the API",
+        },
+      ];
       setConversation((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           userMessage,
-          responses: [
-            {
-              modelId: "error",
-              name: "System",
-              color: "#ef4444",
-              icon: "X",
-              text: null,
-              error: "Failed to reach the API",
-            },
-          ],
+          responses: errorResponses,
         },
       ]);
     } finally {
@@ -97,7 +188,9 @@ export function SupervisorPanel() {
       {/* Conversation */}
       <ScrollArea className="flex-1">
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6">
-          {conversation.length === 0 && !isLoading && (
+          {isLoadingHistory && <ChatSkeleton supervisor />}
+
+          {!isLoadingHistory && conversation.length === 0 && !isLoading && (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-zinc-600">
               <Crown className="h-16 w-16 mb-4 text-purple-500/30" />
               <p className="font-mono text-sm">Supervisor Mode Active</p>
@@ -125,7 +218,6 @@ export function SupervisorPanel() {
                     className="rounded-lg border bg-zinc-900/50 overflow-hidden"
                     style={{ borderColor: `${response.color}40` }}
                   >
-                    {/* Model header */}
                     <div
                       className="px-3 py-2 border-b flex items-center gap-2"
                       style={{
@@ -149,8 +241,6 @@ export function SupervisorPanel() {
                         }}
                       />
                     </div>
-
-                    {/* Response body */}
                     <div className="p-3 font-mono text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto">
                       {response.error ? (
                         <span className="text-red-400">
@@ -185,6 +275,12 @@ export function SupervisorPanel() {
 
       {/* Input */}
       <div className="border-t border-zinc-800 p-3 bg-zinc-950/80">
+        {atLimit && (
+          <div className="mb-2 px-3 py-1.5 bg-amber-950/50 border border-amber-800/50 rounded text-amber-400 text-xs font-mono">
+            Global message limit reached ({maxMessages}). No more messages
+            allowed.
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="flex gap-2">
           <div className="flex-1 relative">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-purple-400 font-mono text-sm">
@@ -193,9 +289,13 @@ export function SupervisorPanel() {
             <input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Ask all models at once..."
+              placeholder={
+                atLimit
+                  ? "Message limit reached..."
+                  : "Ask all models at once..."
+              }
               className="w-full bg-zinc-900 border border-zinc-800 rounded-md pl-7 pr-4 py-2.5 text-sm text-zinc-100 font-mono placeholder:text-zinc-600 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
-              disabled={isLoading}
+              disabled={isLoading || atLimit}
             />
           </div>
 
@@ -204,7 +304,12 @@ export function SupervisorPanel() {
               <Square className="h-4 w-4" />
             </Button>
           ) : (
-            <Button type="submit" variant="outline" size="icon">
+            <Button
+              type="submit"
+              variant="outline"
+              size="icon"
+              disabled={atLimit}
+            >
               <Send className="h-4 w-4" />
             </Button>
           )}
@@ -228,7 +333,9 @@ export function SupervisorPanel() {
           <span>|</span>
           <span>MODELS: ALL</span>
           <span>|</span>
-          <span>MODE: PARALLEL COMPARISON</span>
+          <span>
+            GLOBAL: {globalMsgCount}/{maxMessages}
+          </span>
         </div>
       </div>
     </div>

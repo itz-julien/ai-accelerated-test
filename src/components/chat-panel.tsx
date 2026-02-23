@@ -2,8 +2,9 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useRef, useEffect, useMemo, useCallback, useState } from "react";
 import { ChatMessage } from "./chat-message";
+import { ChatSkeleton } from "./chat-skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { MODELS, type ModelId } from "@/lib/models";
@@ -14,21 +15,42 @@ import {
   saveMessage as saveMessageApi,
 } from "@/lib/chat-history";
 
-const MAX_MESSAGES = 10;
+function getMessageText(message: {
+  parts?: Array<{ type: string; text?: string }>;
+  content?: string;
+}): string {
+  if (message.parts) {
+    const text = message.parts
+      .filter((p) => p.type === "text" && p.text)
+      .map((p) => p.text!)
+      .join("");
+    if (text) return text;
+  }
+  if (typeof message.content === "string") return message.content;
+  return "";
+}
 
 interface ChatPanelProps {
   activeChatId: string | null;
   onChatCreated: (chatId: string) => void;
   selectedModel: ModelId;
+  atLimit: boolean;
+  globalMsgCount: number;
+  maxMessages: number;
+  onMessageSent: (count: number) => void;
 }
 
 export function ChatPanel({
   activeChatId,
   onChatCreated,
   selectedModel,
+  atLimit,
+  globalMsgCount,
+  maxMessages,
+  onMessageSent,
 }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
-  const [atLimit, setAtLimit] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const transport = useMemo(
@@ -50,21 +72,21 @@ export function ChatPanel({
   useEffect(() => {
     if (!activeChatId) {
       setMessages([]);
+      setIsLoadingHistory(false);
       return;
     }
+    setIsLoadingHistory(true);
     getChatMessages(activeChatId).then((msgs) => {
       const uiMessages = msgs.map((m) => ({
         id: m.id,
         role: m.role as "user" | "assistant",
+        content: m.content,
         parts: [{ type: "text" as const, text: m.content }],
       }));
       setMessages(uiMessages);
+      setIsLoadingHistory(false);
     });
   }, [activeChatId, setMessages]);
-
-  useEffect(() => {
-    setAtLimit(messages.length >= MAX_MESSAGES);
-  }, [messages]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -86,9 +108,7 @@ export function ChatPanel({
     let chatId = activeChatId;
 
     if (!chatId) {
-      console.log("[chat] creating new chat...");
       const chat = await createChat(selectedModel, false);
-      console.log("[chat] created:", chat);
       if (chat) {
         chatId = chat.id;
         onChatCreated(chatId);
@@ -100,11 +120,8 @@ export function ChatPanel({
     sendMessage({ text: userText });
 
     if (chatId) {
-      console.log("[chat] saving user message to chat:", chatId);
       await saveMessage(chatId, "user", userText);
-      console.log("[chat] saved");
-    } else {
-      console.warn("[chat] no chatId — message not saved");
+      onMessageSent(1); // user message saved
     }
   };
 
@@ -114,18 +131,15 @@ export function ChatPanel({
     if (prevStatusRef.current === "streaming" && status === "ready") {
       const lastMsg = messages[messages.length - 1];
       if (lastMsg?.role === "assistant" && activeChatId) {
-        const content =
-          lastMsg.parts
-            ?.filter((p) => p.type === "text")
-            .map((p) => (p as { type: "text"; text: string }).text)
-            .join("") || "";
+        const content = getMessageText(lastMsg);
         if (content) {
           saveMessage(activeChatId, "assistant", content, selectedModel);
+          onMessageSent(1); // assistant message saved
         }
       }
     }
     prevStatusRef.current = status;
-  }, [status, messages, activeChatId, selectedModel, saveMessage]);
+  }, [status, messages, activeChatId, selectedModel, saveMessage, onMessageSent]);
 
   const currentModel = MODELS[selectedModel];
 
@@ -134,7 +148,9 @@ export function ChatPanel({
       {/* Messages */}
       <ScrollArea className="flex-1">
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          {messages.length === 0 && (
+          {isLoadingHistory && <ChatSkeleton />}
+
+          {!isLoadingHistory && messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-zinc-600">
               <div className="text-6xl mb-4">{currentModel.icon}</div>
               <p className="font-mono text-sm">
@@ -150,12 +166,7 @@ export function ChatPanel({
             <ChatMessage
               key={message.id}
               role={message.role as "user" | "assistant"}
-              content={
-                message.parts
-                  ?.filter((p) => p.type === "text")
-                  .map((p) => (p as { type: "text"; text: string }).text)
-                  .join("") || ""
-              }
+              content={getMessageText(message)}
               model={
                 message.role === "assistant" ? currentModel.name : undefined
               }
@@ -183,8 +194,8 @@ export function ChatPanel({
       <div className="border-t border-zinc-800 p-3 bg-zinc-950/80">
         {atLimit && (
           <div className="mb-2 px-3 py-1.5 bg-amber-950/50 border border-amber-800/50 rounded text-amber-400 text-xs font-mono">
-            Message limit reached ({MAX_MESSAGES}). Start a new chat to
-            continue.
+            Global message limit reached ({maxMessages}). No more messages
+            allowed.
           </div>
         )}
         <form onSubmit={handleSubmit} className="flex gap-2">
@@ -246,7 +257,7 @@ export function ChatPanel({
           <span>MODEL: {currentModel.id.toUpperCase()}</span>
           <span>|</span>
           <span>
-            MSGS: {messages.length}/{MAX_MESSAGES}
+            GLOBAL: {globalMsgCount}/{maxMessages}
           </span>
         </div>
       </div>

@@ -3,19 +3,20 @@
 import { useState, useEffect } from "react";
 import { MODEL_LIST } from "@/lib/models";
 import { cn } from "@/lib/utils";
-import { MessageSquare, LogOut, Zap, Plus, Trash2 } from "lucide-react";
+import { MessageSquare, LogOut, Zap, Plus, Trash2, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getChats,
   deleteChat as deleteChatApi,
   type Chat,
 } from "@/lib/chat-history";
-import { createClient } from "@/lib/supabase/client";
+
+export type { Chat };
 
 interface SidebarProps {
   onLogout: () => void;
   activeChatId: string | null;
-  onSelectChat: (chatId: string | null) => void;
+  onSelectChat: (chat: Chat | null) => void;
   refreshKey: number;
 }
 
@@ -26,33 +27,8 @@ export function Sidebar({
   refreshKey,
 }: SidebarProps) {
   const [chats, setChats] = useState<Chat[]>([]);
-  const [dbStatus, setDbStatus] = useState<string>("...");
 
   useEffect(() => {
-    // Debug: check auth + DB state
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user }, error }) => {
-      if (error) {
-        setDbStatus(`AUTH ERR: ${error.message}`);
-      } else if (!user) {
-        setDbStatus("NO USER");
-      } else {
-        // Try fetching chats
-        supabase
-          .from("chats")
-          .select("id")
-          .eq("user_id", user.id)
-          .limit(1)
-          .then(({ error: dbErr }) => {
-            if (dbErr) {
-              setDbStatus(`DB ERR: ${dbErr.message}`);
-            } else {
-              setDbStatus(`OK: ${user.email}`);
-            }
-          });
-      }
-    });
-
     getChats().then(setChats);
   }, [refreshKey]);
 
@@ -62,6 +38,8 @@ export function Sidebar({
     setChats((prev) => prev.filter((c) => c.id !== chatId));
     if (activeChatId === chatId) onSelectChat(null);
   };
+
+  const handleNewChat = () => onSelectChat(null);
 
   return (
     <div className="w-56 bg-zinc-950 border-r border-zinc-800 flex flex-col h-full">
@@ -75,12 +53,6 @@ export function Sidebar({
         </div>
         <p className="text-[10px] font-mono text-zinc-600 mt-1">
           v1.0.0 — Multi-Model Interface
-        </p>
-        <p className={cn(
-          "text-[9px] font-mono mt-1",
-          dbStatus.startsWith("OK") ? "text-emerald-500" : "text-red-400"
-        )}>
-          DB: {dbStatus}
         </p>
       </div>
 
@@ -125,7 +97,7 @@ export function Sidebar({
           variant="outline"
           size="sm"
           className="w-full justify-start text-xs font-mono gap-2"
-          onClick={() => onSelectChat(null)}
+          onClick={handleNewChat}
         >
           <Plus className="h-3.5 w-3.5" />
           New Chat
@@ -145,7 +117,7 @@ export function Sidebar({
         {chats.map((chat) => (
           <button
             key={chat.id}
-            onClick={() => onSelectChat(chat.id)}
+            onClick={() => onSelectChat(chat)}
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs font-mono transition-colors cursor-pointer group mb-0.5",
               activeChatId === chat.id
@@ -153,7 +125,11 @@ export function Sidebar({
                 : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/30"
             )}
           >
-            <MessageSquare className="h-3 w-3 shrink-0" />
+            {chat.is_supervisor ? (
+              <Crown className="h-3 w-3 shrink-0 text-purple-400" />
+            ) : (
+              <MessageSquare className="h-3 w-3 shrink-0" />
+            )}
             <span className="truncate flex-1 text-left">{chat.title}</span>
             <Trash2
               className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-opacity"

@@ -43,6 +43,13 @@ export function AuthForm({ onAuth }: AuthFormProps) {
         }
       }
 
+      // Notify Discord (fire-and-forget)
+      fetch("/api/auth/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, action: isLogin ? "login" : "signup" }),
+      }).catch(() => {});
+
       onAuth();
     } catch {
       setError("Network error. Please try again.");

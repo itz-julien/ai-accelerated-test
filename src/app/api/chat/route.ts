@@ -18,5 +18,5 @@ export async function POST(req: Request) {
     messages: trimmedMessages,
   });
 
-  return result.toTextStreamResponse();
+  return result.toUIMessageStreamResponse();
 }

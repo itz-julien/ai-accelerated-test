@@ -2,12 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { AuthForm } from "./auth-form";
-import { Sidebar } from "./sidebar";
+import { Sidebar, type Chat } from "./sidebar";
 import { ChatPanel } from "./chat-panel";
 import { SupervisorPanel } from "./supervisor-panel";
 import { ModelBar } from "./model-bar";
 import { createClient } from "@/lib/supabase/client";
-import { type ModelId } from "@/lib/models";
+import { getGlobalMessageCount } from "@/lib/chat-history";
+import { MODELS, type ModelId } from "@/lib/models";
+
+const MAX_MESSAGES = 10;
 
 export function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -15,7 +18,10 @@ export function Dashboard() {
   const [supervisorMode, setSupervisorMode] = useState(true);
   const [selectedModel, setSelectedModel] = useState<ModelId>("gpt-4o");
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  const [globalMsgCount, setGlobalMsgCount] = useState(0);
   const supabase = createClient();
+
+  const atLimit = globalMsgCount >= MAX_MESSAGES;
 
   useEffect(() => {
     checkAuth();
@@ -28,6 +34,13 @@ export function Dashboard() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Fetch global count on mount and when sidebar refreshes (new chat created)
+  useEffect(() => {
+    if (isAuthenticated) {
+      getGlobalMessageCount().then(setGlobalMsgCount);
+    }
+  }, [isAuthenticated, sidebarRefreshKey]);
 
   const checkAuth = async () => {
     const {
@@ -47,6 +60,11 @@ export function Dashboard() {
     setSidebarRefreshKey((k) => k + 1);
   }, []);
 
+  // Called by panels after sending a message pair (user + assistant)
+  const handleMessageSent = useCallback((count: number) => {
+    setGlobalMsgCount((prev) => prev + count);
+  }, []);
+
   if (isAuthenticated === null) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
@@ -61,14 +79,28 @@ export function Dashboard() {
     return <AuthForm onAuth={() => setIsAuthenticated(true)} />;
   }
 
+  // Lock model switching if current chat has messages
+  const hasActiveChat = activeChatId !== null;
+
   return (
     <div className="flex h-screen bg-zinc-950 text-zinc-100">
       <Sidebar
         onLogout={handleLogout}
         activeChatId={activeChatId}
-        onSelectChat={(id) => {
-          setActiveChatId(id);
-          setSupervisorMode(false);
+        onSelectChat={(chat: Chat | null) => {
+          if (!chat) {
+            setActiveChatId(null);
+            return;
+          }
+          setActiveChatId(chat.id);
+          if (chat.is_supervisor) {
+            setSupervisorMode(true);
+          } else {
+            setSupervisorMode(false);
+            if (chat.model && chat.model in MODELS) {
+              setSelectedModel(chat.model as ModelId);
+            }
+          }
         }}
         refreshKey={sidebarRefreshKey}
       />
@@ -80,7 +112,7 @@ export function Dashboard() {
           <span className="mx-3">|</span>
           MODELS: 3/4 CONNECTED
           <span className="mx-3">|</span>
-          MSG LIMIT: 10
+          GLOBAL MSGS: {globalMsgCount}/{MAX_MESSAGES}
           <span className="mx-3">|</span>
           MODE: {supervisorMode ? "SUPERVISOR" : "SINGLE"}
           <span className="ml-auto">AI COMMAND CENTER v1.0</span>
@@ -92,23 +124,36 @@ export function Dashboard() {
           onSelectModel={(m) => {
             setSelectedModel(m);
             setSupervisorMode(false);
+            setActiveChatId(null);
           }}
           supervisorMode={supervisorMode}
           onToggleSupervisor={() => {
             setSupervisorMode(!supervisorMode);
             if (!supervisorMode) setActiveChatId(null);
           }}
+          locked={hasActiveChat}
         />
 
         {/* Content */}
         <div className="flex-1 overflow-hidden">
           {supervisorMode ? (
-            <SupervisorPanel />
+            <SupervisorPanel
+              activeChatId={activeChatId}
+              onChatCreated={handleChatCreated}
+              atLimit={atLimit}
+              globalMsgCount={globalMsgCount}
+              maxMessages={MAX_MESSAGES}
+              onMessageSent={handleMessageSent}
+            />
           ) : (
             <ChatPanel
               activeChatId={activeChatId}
               onChatCreated={handleChatCreated}
               selectedModel={selectedModel}
+              atLimit={atLimit}
+              globalMsgCount={globalMsgCount}
+              maxMessages={MAX_MESSAGES}
+              onMessageSent={handleMessageSent}
             />
           )}
         </div>

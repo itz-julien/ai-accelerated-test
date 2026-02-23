@@ -138,6 +138,31 @@ export async function saveMessage(
   }
 }
 
+export async function getGlobalMessageCount(): Promise<number> {
+  const supabase = getSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return 0;
+
+  const { data: chats } = await supabase
+    .from("chats")
+    .select("id")
+    .eq("user_id", user.id);
+
+  if (!chats || chats.length === 0) return 0;
+
+  const { count } = await supabase
+    .from("messages")
+    .select("*", { count: "exact", head: true })
+    .in(
+      "chat_id",
+      chats.map((c) => c.id)
+    );
+
+  return count || 0;
+}
+
 export async function deleteChat(chatId: string): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("chats").delete().eq("id", chatId);
