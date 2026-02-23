@@ -48,15 +48,18 @@ export function ModelBar({
       {MODEL_LIST.map((model) => (
         <button
           key={model.id}
-          onClick={() => onSelectModel(model.id)}
+          onClick={() => model.online && onSelectModel(model.id)}
+          disabled={!model.online}
           className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono transition-all cursor-pointer",
-            selectedModel === model.id && !supervisorMode
-              ? "text-white shadow-lg"
-              : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+            "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono transition-all",
+            !model.online
+              ? "text-zinc-700 cursor-not-allowed opacity-50"
+              : selectedModel === model.id && !supervisorMode
+                ? "text-white shadow-lg cursor-pointer"
+                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50 cursor-pointer"
           )}
           style={
-            selectedModel === model.id && !supervisorMode
+            model.online && selectedModel === model.id && !supervisorMode
               ? {
                   backgroundColor: `${model.color}20`,
                   border: `1px solid ${model.color}`,
@@ -67,10 +70,16 @@ export function ModelBar({
         >
           <span>{model.icon}</span>
           <span>{model.name}</span>
-          <span
-            className="w-2 h-2 rounded-full animate-pulse"
-            style={{ backgroundColor: model.color }}
-          />
+          {model.online ? (
+            <span
+              className="w-2 h-2 rounded-full animate-pulse"
+              style={{ backgroundColor: model.color }}
+            />
+          ) : (
+            <span className="text-[9px] uppercase tracking-wider text-zinc-600 font-bold">
+              offline
+            </span>
+          )}
         </button>
       ))}
     </div>

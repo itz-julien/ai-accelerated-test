@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, MODEL_LIST } from "@/lib/models";
+import { getModel, ONLINE_MODELS } from "@/lib/models";
 import { toModelMessages } from "@/lib/messages";
 import { NextResponse } from "next/server";
 
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
 
   // Fan out to all models in parallel
   const results = await Promise.allSettled(
-    MODEL_LIST.map(async (model) => {
+    ONLINE_MODELS.map(async (model) => {
       const result = await generateText({
         model: getModel(model.id),
         system:
@@ -36,10 +36,10 @@ export async function POST(req: Request) {
       return { ...r.value, error: null };
     }
     return {
-      modelId: MODEL_LIST[i].id,
-      name: MODEL_LIST[i].name,
-      color: MODEL_LIST[i].color,
-      icon: MODEL_LIST[i].icon,
+      modelId: ONLINE_MODELS[i].id,
+      name: ONLINE_MODELS[i].name,
+      color: ONLINE_MODELS[i].color,
+      icon: ONLINE_MODELS[i].icon,
       text: null,
       error: (r.reason as Error)?.message || "Failed to respond",
     };

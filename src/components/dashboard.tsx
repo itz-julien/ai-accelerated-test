@@ -80,7 +80,7 @@ export function Dashboard() {
           <span className="mx-3">|</span>
           LATENCY: &lt;100ms
           <span className="mx-3">|</span>
-          MODELS: 3/3 CONNECTED
+          MODELS: 3/4 CONNECTED
           <span className="mx-3">|</span>
           MSG LIMIT: 10
           <span className="mx-3">|</span>

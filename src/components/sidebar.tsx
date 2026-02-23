@@ -77,14 +77,22 @@ export function Sidebar({
         {MODEL_LIST.map((model) => (
           <div
             key={model.id}
-            className="flex items-center gap-2 py-1.5 px-2 rounded text-xs font-mono text-zinc-400"
+            className={cn(
+              "flex items-center gap-2 py-1.5 px-2 rounded text-xs font-mono",
+              model.online ? "text-zinc-400" : "text-zinc-600 opacity-60"
+            )}
           >
             <span
-              className="w-2 h-2 rounded-full animate-pulse"
-              style={{ backgroundColor: model.color }}
+              className={cn("w-2 h-2 rounded-full", model.online && "animate-pulse")}
+              style={{ backgroundColor: model.online ? model.color : "#3f3f46" }}
             />
             <span>{model.name}</span>
-            <span className="ml-auto text-[10px] text-zinc-600">ONLINE</span>
+            <span className={cn(
+              "ml-auto text-[10px]",
+              model.online ? "text-zinc-600" : "text-red-500/70"
+            )}>
+              {model.online ? "ONLINE" : "OFFLINE"}
+            </span>
           </div>
         ))}
       </div>

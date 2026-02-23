@@ -2,7 +2,7 @@ import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { google } from "@ai-sdk/google";
 
-export type ModelId = "gpt-4o" | "claude-sonnet" | "gemini-pro";
+export type ModelId = "gpt-4o" | "claude-sonnet" | "gemini-pro" | "grok";
 
 export interface ModelConfig {
   id: ModelId;
@@ -10,6 +10,7 @@ export interface ModelConfig {
   provider: string;
   color: string;
   icon: string;
+  online: boolean;
 }
 
 export const MODELS: Record<ModelId, ModelConfig> = {
@@ -19,6 +20,7 @@ export const MODELS: Record<ModelId, ModelConfig> = {
     provider: "OpenAI",
     color: "#10a37f",
     icon: "⚡",
+    online: true,
   },
   "claude-sonnet": {
     id: "claude-sonnet",
@@ -26,6 +28,7 @@ export const MODELS: Record<ModelId, ModelConfig> = {
     provider: "Anthropic",
     color: "#d97706",
     icon: "🧠",
+    online: true,
   },
   "gemini-pro": {
     id: "gemini-pro",
@@ -33,6 +36,15 @@ export const MODELS: Record<ModelId, ModelConfig> = {
     provider: "Google",
     color: "#4285f4",
     icon: "✨",
+    online: true,
+  },
+  grok: {
+    id: "grok",
+    name: "Grok",
+    provider: "xAI",
+    color: "#ef4444",
+    icon: "🔴",
+    online: false,
   },
 };
 
@@ -50,3 +62,4 @@ export function getModel(modelId: ModelId) {
 }
 
 export const MODEL_LIST = Object.values(MODELS);
+export const ONLINE_MODELS = MODEL_LIST.filter((m) => m.online);
