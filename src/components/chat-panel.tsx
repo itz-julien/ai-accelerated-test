@@ -3,12 +3,12 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { ModelSelector } from "./model-selector";
 import { ChatMessage } from "./chat-message";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { MODELS, type ModelId } from "@/lib/models";
+import { MODELS, MODEL_LIST, type ModelId } from "@/lib/models";
 import { Send, Square, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const MAX_MESSAGES = 10;
 
@@ -19,7 +19,6 @@ interface ChatPanelProps {
 
 export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
   const [selectedModel, setSelectedModel] = useState<ModelId>("gpt-4o");
-  const [supervisorMode, setSupervisorMode] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [atLimit, setAtLimit] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -27,10 +26,10 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
-        api: supervisorMode ? "/api/supervisor" : "/api/chat",
+        api: "/api/chat",
         body: { model: selectedModel },
       }),
-    [supervisorMode, selectedModel]
+    [selectedModel]
   );
 
   const { messages, sendMessage, stop, setMessages, status } = useChat({
@@ -50,32 +49,31 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
         const res = await fetch(`/api/history/${activeChatId}`);
         const data = await res.json();
         if (data.messages) {
-          const uiMessages = data.messages.map((m: { id: string; role: string; content: string }) => ({
-            id: m.id,
-            role: m.role,
-            parts: [{ type: "text" as const, text: m.content }],
-          }));
+          const uiMessages = data.messages.map(
+            (m: { id: string; role: string; content: string }) => ({
+              id: m.id,
+              role: m.role,
+              parts: [{ type: "text" as const, text: m.content }],
+            })
+          );
           setMessages(uiMessages);
         }
       } catch {
-        // Silently fail — tables might not exist yet
+        // Tables might not exist yet
       }
     })();
   }, [activeChatId, setMessages]);
 
-  // Check message limit
   useEffect(() => {
     setAtLimit(messages.length >= MAX_MESSAGES);
   }, [messages]);
 
-  // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // Save message to Supabase
   const saveMessage = useCallback(
     async (chatId: string, role: string, content: string, model?: string) => {
       try {
@@ -91,23 +89,18 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
     []
   );
 
-  // Create chat if needed, then send message
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading || atLimit) return;
 
     let chatId = activeChatId;
 
-    // Create a new chat if none active
     if (!chatId) {
       try {
         const res = await fetch("/api/history", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: selectedModel,
-            is_supervisor: supervisorMode,
-          }),
+          body: JSON.stringify({ model: selectedModel, is_supervisor: false }),
         });
         const data = await res.json();
         if (data.chat) {
@@ -115,7 +108,7 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
           onChatCreated(chatId!);
         }
       } catch {
-        // If history tables don't exist, still allow chatting
+        // Still allow chatting without persistence
       }
     }
 
@@ -123,13 +116,11 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
     setInputValue("");
     sendMessage({ text: userText });
 
-    // Save user message
     if (chatId) {
       await saveMessage(chatId, "user", userText);
     }
   };
 
-  // Save assistant response when streaming finishes
   const prevStatusRef = useRef(status);
   useEffect(() => {
     if (prevStatusRef.current === "streaming" && status === "ready") {
@@ -141,44 +132,57 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
             .map((p) => (p as { type: "text"; text: string }).text)
             .join("") || "";
         if (content) {
-          saveMessage(
-            activeChatId,
-            "assistant",
-            content,
-            supervisorMode ? "supervisor" : selectedModel
-          );
+          saveMessage(activeChatId, "assistant", content, selectedModel);
         }
       }
     }
     prevStatusRef.current = status;
-  }, [status, messages, activeChatId, supervisorMode, selectedModel, saveMessage]);
+  }, [status, messages, activeChatId, selectedModel, saveMessage]);
 
   const currentModel = MODELS[selectedModel];
 
   return (
     <div className="flex flex-col h-full">
-      <ModelSelector
-        selectedModel={selectedModel}
-        onSelect={(m) => {
-          setSelectedModel(m);
-          setSupervisorMode(false);
-        }}
-        supervisorMode={supervisorMode}
-        onToggleSupervisor={() => setSupervisorMode(!supervisorMode)}
-      />
+      {/* Model selector */}
+      <div className="flex items-center gap-2 p-2 border-b border-zinc-800 bg-zinc-950/80">
+        {MODEL_LIST.map((model) => (
+          <button
+            key={model.id}
+            onClick={() => setSelectedModel(model.id)}
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono transition-all cursor-pointer",
+              selectedModel === model.id
+                ? "text-white shadow-lg"
+                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+            )}
+            style={
+              selectedModel === model.id
+                ? {
+                    backgroundColor: `${model.color}20`,
+                    border: `1px solid ${model.color}`,
+                    boxShadow: `0 0 10px ${model.color}30`,
+                  }
+                : undefined
+            }
+          >
+            <span>{model.icon}</span>
+            <span>{model.name}</span>
+            <span
+              className="w-2 h-2 rounded-full animate-pulse"
+              style={{ backgroundColor: model.color }}
+            />
+          </button>
+        ))}
+      </div>
 
       {/* Messages */}
       <ScrollArea className="flex-1">
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-zinc-600">
-              <div className="text-6xl mb-4">
-                {supervisorMode ? "👑" : currentModel.icon}
-              </div>
+              <div className="text-6xl mb-4">{currentModel.icon}</div>
               <p className="font-mono text-sm">
-                {supervisorMode
-                  ? "Supervisor Mode — All models will be queried"
-                  : `Connected to ${currentModel.name}`}
+                Connected to {currentModel.name}
               </p>
               <p className="font-mono text-xs text-zinc-700 mt-1">
                 Type a message to begin...
@@ -197,18 +201,10 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
                   .join("") || ""
               }
               model={
-                message.role === "assistant"
-                  ? supervisorMode
-                    ? "Supervisor"
-                    : currentModel.name
-                  : undefined
+                message.role === "assistant" ? currentModel.name : undefined
               }
               color={
-                message.role === "assistant"
-                  ? supervisorMode
-                    ? "#a855f7"
-                    : currentModel.color
-                  : undefined
+                message.role === "assistant" ? currentModel.color : undefined
               }
             />
           ))}
@@ -217,13 +213,10 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
             <div className="px-4 py-3 font-mono text-sm">
               <span
                 className="text-[10px] uppercase tracking-wider font-bold animate-pulse"
-                style={{
-                  color: supervisorMode ? "#a855f7" : currentModel.color,
-                }}
+                style={{ color: currentModel.color }}
               >
-                {supervisorMode
-                  ? "< supervisor thinking..."
-                  : `< ${currentModel.name} thinking...`}
+                {"< "}
+                {currentModel.name} thinking...
               </span>
             </div>
           )}
@@ -234,7 +227,8 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
       <div className="border-t border-zinc-800 p-3 bg-zinc-950/80">
         {atLimit && (
           <div className="mb-2 px-3 py-1.5 bg-amber-950/50 border border-amber-800/50 rounded text-amber-400 text-xs font-mono">
-            Message limit reached ({MAX_MESSAGES}). Start a new chat to continue.
+            Message limit reached ({MAX_MESSAGES}). Start a new chat to
+            continue.
           </div>
         )}
         <form onSubmit={handleSubmit} className="flex gap-2">
@@ -248,9 +242,7 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
               placeholder={
                 atLimit
                   ? "Message limit reached..."
-                  : supervisorMode
-                    ? "Ask all models at once..."
-                    : `Ask ${currentModel.name}...`
+                  : `Ask ${currentModel.name}...`
               }
               className="w-full bg-zinc-900 border border-zinc-800 rounded-md pl-7 pr-4 py-2.5 text-sm text-zinc-100 font-mono placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600"
               disabled={isLoading || atLimit}
@@ -286,26 +278,16 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
         <div className="flex items-center gap-3 mt-2 text-[10px] font-mono text-zinc-600">
           <span
             className="flex items-center gap-1"
-            style={{
-              color: supervisorMode ? "#a855f7" : currentModel.color,
-            }}
+            style={{ color: currentModel.color }}
           >
             <span
               className="w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{
-                backgroundColor: supervisorMode
-                  ? "#a855f7"
-                  : currentModel.color,
-              }}
+              style={{ backgroundColor: currentModel.color }}
             />
-            {supervisorMode
-              ? "SUPERVISOR"
-              : currentModel.provider.toUpperCase()}
+            {currentModel.provider.toUpperCase()}
           </span>
           <span>|</span>
-          <span>
-            MODEL: {supervisorMode ? "ALL" : currentModel.id.toUpperCase()}
-          </span>
+          <span>MODEL: {currentModel.id.toUpperCase()}</span>
           <span>|</span>
           <span>
             MSGS: {messages.length}/{MAX_MESSAGES}

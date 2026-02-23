@@ -1,5 +1,6 @@
 import { streamText } from "ai";
 import { getModel, type ModelId } from "@/lib/models";
+import { toModelMessages } from "@/lib/messages";
 
 const MAX_MESSAGES = 10;
 
@@ -8,8 +9,7 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   const { messages, model: modelId } = await req.json();
 
-  // Limit context to last MAX_MESSAGES to control token usage
-  const trimmedMessages = messages.slice(-MAX_MESSAGES);
+  const trimmedMessages = toModelMessages(messages).slice(-MAX_MESSAGES);
 
   const result = streamText({
     model: getModel(modelId as ModelId),

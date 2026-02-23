@@ -4,11 +4,13 @@ import { useState, useEffect, useCallback } from "react";
 import { AuthForm } from "./auth-form";
 import { Sidebar } from "./sidebar";
 import { ChatPanel } from "./chat-panel";
+import { SupervisorPanel } from "./supervisor-panel";
 import { createClient } from "@/lib/supabase/client";
 
 export function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [supervisorMode, setSupervisorMode] = useState(false);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const supabase = createClient();
 
@@ -61,7 +63,15 @@ export function Dashboard() {
       <Sidebar
         onLogout={handleLogout}
         activeChatId={activeChatId}
-        onSelectChat={setActiveChatId}
+        onSelectChat={(id) => {
+          setActiveChatId(id);
+          setSupervisorMode(false);
+        }}
+        supervisorMode={supervisorMode}
+        onToggleSupervisor={() => {
+          setSupervisorMode(!supervisorMode);
+          setActiveChatId(null);
+        }}
         refreshKey={sidebarRefreshKey}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -74,13 +84,19 @@ export function Dashboard() {
           MODELS: 3/3 CONNECTED
           <span className="mx-3">|</span>
           MSG LIMIT: 10
+          <span className="mx-3">|</span>
+          MODE: {supervisorMode ? "SUPERVISOR" : "SINGLE"}
           <span className="ml-auto">AI COMMAND CENTER v1.0</span>
         </div>
         <div className="flex-1 overflow-hidden">
-          <ChatPanel
-            activeChatId={activeChatId}
-            onChatCreated={handleChatCreated}
-          />
+          {supervisorMode ? (
+            <SupervisorPanel />
+          ) : (
+            <ChatPanel
+              activeChatId={activeChatId}
+              onChatCreated={handleChatCreated}
+            />
+          )}
         </div>
       </div>
     </div>
