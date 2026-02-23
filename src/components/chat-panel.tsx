@@ -8,6 +8,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { MODELS, type ModelId } from "@/lib/models";
 import { Send, Square, Trash2 } from "lucide-react";
+import {
+  createChat,
+  getChatMessages,
+  saveMessage as saveMessageApi,
+} from "@/lib/chat-history";
 
 const MAX_MESSAGES = 10;
 
@@ -41,29 +46,20 @@ export function ChatPanel({
 
   const isLoading = status === "submitted" || status === "streaming";
 
+  // Load messages when activeChatId changes
   useEffect(() => {
     if (!activeChatId) {
       setMessages([]);
       return;
     }
-    (async () => {
-      try {
-        const res = await fetch(`/api/history/${activeChatId}`);
-        const data = await res.json();
-        if (data.messages) {
-          const uiMessages = data.messages.map(
-            (m: { id: string; role: string; content: string }) => ({
-              id: m.id,
-              role: m.role,
-              parts: [{ type: "text" as const, text: m.content }],
-            })
-          );
-          setMessages(uiMessages);
-        }
-      } catch {
-        // Tables might not exist yet
-      }
-    })();
+    getChatMessages(activeChatId).then((msgs) => {
+      const uiMessages = msgs.map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        parts: [{ type: "text" as const, text: m.content }],
+      }));
+      setMessages(uiMessages);
+    });
   }, [activeChatId, setMessages]);
 
   useEffect(() => {
@@ -78,15 +74,7 @@ export function ChatPanel({
 
   const saveMessage = useCallback(
     async (chatId: string, role: string, content: string, model?: string) => {
-      try {
-        await fetch(`/api/history/${chatId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role, content, model }),
-        });
-      } catch {
-        // Silent fail
-      }
+      await saveMessageApi(chatId, role, content, model);
     },
     []
   );
@@ -98,19 +86,10 @@ export function ChatPanel({
     let chatId = activeChatId;
 
     if (!chatId) {
-      try {
-        const res = await fetch("/api/history", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: selectedModel, is_supervisor: false }),
-        });
-        const data = await res.json();
-        if (data.chat) {
-          chatId = data.chat.id;
-          onChatCreated(chatId!);
-        }
-      } catch {
-        // Still allow chatting without persistence
+      const chat = await createChat(selectedModel, false);
+      if (chat) {
+        chatId = chat.id;
+        onChatCreated(chatId);
       }
     }
 
@@ -123,6 +102,7 @@ export function ChatPanel({
     }
   };
 
+  // Save assistant response when streaming finishes
   const prevStatusRef = useRef(status);
   useEffect(() => {
     if (prevStatusRef.current === "streaming" && status === "ready") {

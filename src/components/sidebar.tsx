@@ -5,14 +5,11 @@ import { MODEL_LIST } from "@/lib/models";
 import { cn } from "@/lib/utils";
 import { MessageSquare, LogOut, Zap, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-interface Chat {
-  id: string;
-  title: string;
-  model: string;
-  is_supervisor: boolean;
-  updated_at: string;
-}
+import {
+  getChats,
+  deleteChat as deleteChatApi,
+  type Chat,
+} from "@/lib/chat-history";
 
 interface SidebarProps {
   onLogout: () => void;
@@ -30,28 +27,14 @@ export function Sidebar({
   const [chats, setChats] = useState<Chat[]>([]);
 
   useEffect(() => {
-    loadChats();
+    getChats().then(setChats);
   }, [refreshKey]);
 
-  const loadChats = async () => {
-    try {
-      const res = await fetch("/api/history");
-      const data = await res.json();
-      if (data.chats) setChats(data.chats);
-    } catch {
-      // Tables might not exist yet
-    }
-  };
-
-  const deleteChat = async (chatId: string, e: React.MouseEvent) => {
+  const handleDelete = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      await fetch(`/api/history/${chatId}`, { method: "DELETE" });
-      setChats((prev) => prev.filter((c) => c.id !== chatId));
-      if (activeChatId === chatId) onSelectChat(null);
-    } catch {
-      // Silent fail
-    }
+    await deleteChatApi(chatId);
+    setChats((prev) => prev.filter((c) => c.id !== chatId));
+    if (activeChatId === chatId) onSelectChat(null);
   };
 
   return (
@@ -83,14 +66,21 @@ export function Sidebar({
             )}
           >
             <span
-              className={cn("w-2 h-2 rounded-full", model.online && "animate-pulse")}
-              style={{ backgroundColor: model.online ? model.color : "#3f3f46" }}
+              className={cn(
+                "w-2 h-2 rounded-full",
+                model.online && "animate-pulse"
+              )}
+              style={{
+                backgroundColor: model.online ? model.color : "#3f3f46",
+              }}
             />
             <span>{model.name}</span>
-            <span className={cn(
-              "ml-auto text-[10px]",
-              model.online ? "text-zinc-600" : "text-red-500/70"
-            )}>
+            <span
+              className={cn(
+                "ml-auto text-[10px]",
+                model.online ? "text-zinc-600" : "text-red-500/70"
+              )}
+            >
               {model.online ? "ONLINE" : "OFFLINE"}
             </span>
           </div>
@@ -135,7 +125,7 @@ export function Sidebar({
             <span className="truncate flex-1 text-left">{chat.title}</span>
             <Trash2
               className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-opacity"
-              onClick={(e) => deleteChat(chat.id, e)}
+              onClick={(e) => handleDelete(chat.id, e)}
             />
           </button>
         ))}
