@@ -12,7 +12,7 @@ import { type ModelId } from "@/lib/models";
 export function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [supervisorMode, setSupervisorMode] = useState(false);
+  const [supervisorMode, setSupervisorMode] = useState(true);
   const [selectedModel, setSelectedModel] = useState<ModelId>("gpt-4o");
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const supabase = createClient();
@@ -77,8 +77,6 @@ export function Dashboard() {
         <div className="h-8 bg-zinc-950 border-b border-zinc-800 flex items-center px-4 text-[10px] font-mono text-zinc-600">
           <span className="text-emerald-400 mr-2">●</span>
           SYSTEM ONLINE
-          <span className="mx-3">|</span>
-          LATENCY: &lt;100ms
           <span className="mx-3">|</span>
           MODELS: 3/4 CONNECTED
           <span className="mx-3">|</span>
