@@ -86,7 +86,9 @@ export function ChatPanel({
     let chatId = activeChatId;
 
     if (!chatId) {
+      console.log("[chat] creating new chat...");
       const chat = await createChat(selectedModel, false);
+      console.log("[chat] created:", chat);
       if (chat) {
         chatId = chat.id;
         onChatCreated(chatId);
@@ -98,7 +100,11 @@ export function ChatPanel({
     sendMessage({ text: userText });
 
     if (chatId) {
+      console.log("[chat] saving user message to chat:", chatId);
       await saveMessage(chatId, "user", userText);
+      console.log("[chat] saved");
+    } else {
+      console.warn("[chat] no chatId — message not saved");
     }
   };
 
