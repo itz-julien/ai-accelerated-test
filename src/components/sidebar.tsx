@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { MODEL_LIST } from "@/lib/models";
 import { cn } from "@/lib/utils";
-import { MessageSquare, LogOut, Zap, Plus, Trash2, Crown } from "lucide-react";
+import { MessageSquare, LogOut, Zap, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Chat {
@@ -18,8 +18,6 @@ interface SidebarProps {
   onLogout: () => void;
   activeChatId: string | null;
   onSelectChat: (chatId: string | null) => void;
-  supervisorMode: boolean;
-  onToggleSupervisor: () => void;
   refreshKey: number;
 }
 
@@ -27,8 +25,6 @@ export function Sidebar({
   onLogout,
   activeChatId,
   onSelectChat,
-  supervisorMode,
-  onToggleSupervisor,
   refreshKey,
 }: SidebarProps) {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -94,7 +90,7 @@ export function Sidebar({
       </div>
 
       {/* Actions */}
-      <div className="p-3 border-b border-zinc-800 space-y-1.5">
+      <div className="p-3 border-b border-zinc-800">
         <Button
           variant="outline"
           size="sm"
@@ -103,19 +99,6 @@ export function Sidebar({
         >
           <Plus className="h-3.5 w-3.5" />
           New Chat
-        </Button>
-        <Button
-          variant={supervisorMode ? "secondary" : "ghost"}
-          size="sm"
-          className={cn(
-            "w-full justify-start text-xs font-mono gap-2",
-            supervisorMode &&
-              "bg-purple-500/20 border border-purple-500/50 text-purple-300 hover:bg-purple-500/30"
-          )}
-          onClick={onToggleSupervisor}
-        >
-          <Crown className="h-3.5 w-3.5" />
-          Supervisor
         </Button>
       </div>
 

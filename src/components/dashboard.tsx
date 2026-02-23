@@ -5,12 +5,15 @@ import { AuthForm } from "./auth-form";
 import { Sidebar } from "./sidebar";
 import { ChatPanel } from "./chat-panel";
 import { SupervisorPanel } from "./supervisor-panel";
+import { ModelBar } from "./model-bar";
 import { createClient } from "@/lib/supabase/client";
+import { type ModelId } from "@/lib/models";
 
 export function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [supervisorMode, setSupervisorMode] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ModelId>("gpt-4o");
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const supabase = createClient();
 
@@ -67,14 +70,10 @@ export function Dashboard() {
           setActiveChatId(id);
           setSupervisorMode(false);
         }}
-        supervisorMode={supervisorMode}
-        onToggleSupervisor={() => {
-          setSupervisorMode(!supervisorMode);
-          setActiveChatId(null);
-        }}
         refreshKey={sidebarRefreshKey}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top status bar */}
         <div className="h-8 bg-zinc-950 border-b border-zinc-800 flex items-center px-4 text-[10px] font-mono text-zinc-600">
           <span className="text-emerald-400 mr-2">●</span>
           SYSTEM ONLINE
@@ -88,6 +87,22 @@ export function Dashboard() {
           MODE: {supervisorMode ? "SUPERVISOR" : "SINGLE"}
           <span className="ml-auto">AI COMMAND CENTER v1.0</span>
         </div>
+
+        {/* Model bar */}
+        <ModelBar
+          selectedModel={selectedModel}
+          onSelectModel={(m) => {
+            setSelectedModel(m);
+            setSupervisorMode(false);
+          }}
+          supervisorMode={supervisorMode}
+          onToggleSupervisor={() => {
+            setSupervisorMode(!supervisorMode);
+            if (!supervisorMode) setActiveChatId(null);
+          }}
+        />
+
+        {/* Content */}
         <div className="flex-1 overflow-hidden">
           {supervisorMode ? (
             <SupervisorPanel />
@@ -95,6 +110,7 @@ export function Dashboard() {
             <ChatPanel
               activeChatId={activeChatId}
               onChatCreated={handleChatCreated}
+              selectedModel={selectedModel}
             />
           )}
         </div>

@@ -6,19 +6,22 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { ChatMessage } from "./chat-message";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { MODELS, MODEL_LIST, type ModelId } from "@/lib/models";
+import { MODELS, type ModelId } from "@/lib/models";
 import { Send, Square, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 const MAX_MESSAGES = 10;
 
 interface ChatPanelProps {
   activeChatId: string | null;
   onChatCreated: (chatId: string) => void;
+  selectedModel: ModelId;
 }
 
-export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
-  const [selectedModel, setSelectedModel] = useState<ModelId>("gpt-4o");
+export function ChatPanel({
+  activeChatId,
+  onChatCreated,
+  selectedModel,
+}: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
   const [atLimit, setAtLimit] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -38,7 +41,6 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
 
   const isLoading = status === "submitted" || status === "streaming";
 
-  // Load messages when activeChatId changes
   useEffect(() => {
     if (!activeChatId) {
       setMessages([]);
@@ -143,38 +145,6 @@ export function ChatPanel({ activeChatId, onChatCreated }: ChatPanelProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Model selector */}
-      <div className="flex items-center gap-2 p-2 border-b border-zinc-800 bg-zinc-950/80">
-        {MODEL_LIST.map((model) => (
-          <button
-            key={model.id}
-            onClick={() => setSelectedModel(model.id)}
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono transition-all cursor-pointer",
-              selectedModel === model.id
-                ? "text-white shadow-lg"
-                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
-            )}
-            style={
-              selectedModel === model.id
-                ? {
-                    backgroundColor: `${model.color}20`,
-                    border: `1px solid ${model.color}`,
-                    boxShadow: `0 0 10px ${model.color}30`,
-                  }
-                : undefined
-            }
-          >
-            <span>{model.icon}</span>
-            <span>{model.name}</span>
-            <span
-              className="w-2 h-2 rounded-full animate-pulse"
-              style={{ backgroundColor: model.color }}
-            />
-          </button>
-        ))}
-      </div>
-
       {/* Messages */}
       <ScrollArea className="flex-1">
         <div ref={scrollRef} className="flex-1 overflow-y-auto">

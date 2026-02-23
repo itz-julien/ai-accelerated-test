@@ -94,17 +94,6 @@ export function SupervisorPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-2 p-2 border-b border-zinc-800 bg-zinc-950/80">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono bg-purple-500/20 border border-purple-500 text-purple-300 shadow-lg shadow-purple-500/20">
-          <Crown className="h-3.5 w-3.5" />
-          <span>Supervisor Mode</span>
-        </div>
-        <span className="text-[10px] font-mono text-zinc-500">
-          All models queried in parallel — responses shown side by side
-        </span>
-      </div>
-
       {/* Conversation */}
       <ScrollArea className="flex-1">
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6">
