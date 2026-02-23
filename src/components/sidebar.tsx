@@ -10,6 +10,7 @@ import {
   deleteChat as deleteChatApi,
   type Chat,
 } from "@/lib/chat-history";
+import { createClient } from "@/lib/supabase/client";
 
 interface SidebarProps {
   onLogout: () => void;
@@ -25,8 +26,33 @@ export function Sidebar({
   refreshKey,
 }: SidebarProps) {
   const [chats, setChats] = useState<Chat[]>([]);
+  const [dbStatus, setDbStatus] = useState<string>("...");
 
   useEffect(() => {
+    // Debug: check auth + DB state
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user }, error }) => {
+      if (error) {
+        setDbStatus(`AUTH ERR: ${error.message}`);
+      } else if (!user) {
+        setDbStatus("NO USER");
+      } else {
+        // Try fetching chats
+        supabase
+          .from("chats")
+          .select("id")
+          .eq("user_id", user.id)
+          .limit(1)
+          .then(({ error: dbErr }) => {
+            if (dbErr) {
+              setDbStatus(`DB ERR: ${dbErr.message}`);
+            } else {
+              setDbStatus(`OK: ${user.email}`);
+            }
+          });
+      }
+    });
+
     getChats().then(setChats);
   }, [refreshKey]);
 
@@ -49,6 +75,12 @@ export function Sidebar({
         </div>
         <p className="text-[10px] font-mono text-zinc-600 mt-1">
           v1.0.0 — Multi-Model Interface
+        </p>
+        <p className={cn(
+          "text-[9px] font-mono mt-1",
+          dbStatus.startsWith("OK") ? "text-emerald-500" : "text-red-400"
+        )}>
+          DB: {dbStatus}
         </p>
       </div>
 
